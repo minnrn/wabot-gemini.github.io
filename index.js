@@ -3,77 +3,77 @@ const qrcode = require("qrcode-terminal");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require("dotenv").config();
 
-//Creating instances
+// Membuat instance Google AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Konfigurasi client WhatsApp dengan pengaturan Puppeteer yang disederhanakan
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
-    args: ["--no-sandbox", "--disable-gpu"],
-  },
-  webVersionCache: {
-    type: "remote",
-    remotePath:
-      "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html",
-  },
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-extensions']
+  }
 });
 
-//Initializing GenAI model
+// Inisialisasi model GenAI
 const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-//Function to generate response from AI model and reply to user
+// Fungsi untuk menghasilkan respons dari model AI dan membalas ke pengguna
 async function generate(prompt, message) {
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
-
-  await message.reply(text); //Reply to user
+  try {
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    await message.reply(text);
+  } catch (error) {
+    console.error('Error generating AI response:', error);
+    await message.reply("Maaf, terjadi kesalahan saat menghasilkan respons.");
+  }
 }
 
-//All event listeners to know client status
+// Event listener untuk status client
 client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
 client.on("authenticated", () => {
-  console.log("Client is authenticated!");
+  console.log("Client berhasil diautentikasi!");
 });
 
 client.on("ready", () => {
-  console.log("Client is ready!");
+  console.log("Client siap digunakan!");
 });
 
-client.on("disconnected", () => {
-  console.log("Client is disconnected!");
+client.on("disconnected", (reason) => {
+  console.log("Client terputus:", reason);
 });
 
-client.on("auth_failure", () => {
-  console.log("Client is auth_failure!");
+client.on("auth_failure", (msg) => {
+  console.error("Autentikasi gagal:", msg);
 });
 
+// Event listener untuk pesan masuk
 client.on("message", async (message) => {
-  // ignore if group message
-  const isGroup = message.from.includes("@g.us");
-  if (isGroup) {
-    console.log("Group message received!");
-    return;
-  } else if (message.body.includes(".bot")) {
-    console.log("message to bot received!");
-    var query;
-    //Extracting text from message body using regular expression method
-    const regxmatch = message.body.match(/.bot(.+)/);
-
-    //If no text followed by .bot then we use "Hi" as text
-    if (regxmatch) {
-      query = regxmatch[1];
-    } else {
-      console.log("No regex match!");
-      query = "Hi";
+  try {
+    // Mengabaikan pesan grup
+    if (message.from.includes("@g.us")) {
+      console.log("Pesan grup diterima dan diabaikan.");
+      return;
     }
 
-    //Call the generate function
-    generate(query, message);
+    if (message.body.startsWith(".bot")) {
+      console.log("Pesan untuk bot diterima!");
+      
+      // Ekstrak query dari pesan
+      const query = message.body.slice(4).trim() || "Halo";
+      
+      // Panggil fungsi generate
+      await generate(query, message);
+    }
+  } catch (error) {
+    console.error('Error handling message:', error);
   }
 });
 
-client.initialize();
+// Inisialisasi client dengan penanganan error
+client.initialize().catch(err => console.error('Error inisialisasi client:', err));
